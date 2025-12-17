@@ -1,206 +1,272 @@
 # 🗺️ Unified POI Table
 
-A comprehensive data pipeline for consolidating Berlin's Point of Interest (POI) data into a single unified table with spatial indexing and nearest-neighbor analysis.
+> A comprehensive data pipeline for consolidating Berlin's Point of Interest (POI) data into a single unified table with spatial indexing and nearest-neighbor analysis.
 
----
+## Overview
 
-## 📋 Table of Contents
+This pipeline standardizes and consolidates multiple POI datasets from across Berlin into a single, spatially-indexed table optimized for analysis and querying. Built with Python, SQLAlchemy, and PostGIS.
 
-1. [🏗️ Schema Definition](#schema-definition)
-2. [🧹 Data Cleaning](#data-cleaning)
-3. [🔄 Pipeline Overview](#pipeline-overview)
-4. [⚙️ Implementation Details](#implementation-details)
+## Features
 
----
+- ✅ **Automated validation** of source tables before processing
+- 🔄 **Standardized schema** across all POI types
+- 📍 **Spatial indexing** with PostGIS for fast geospatial queries
+- 🎯 **Nearest neighbor analysis** for proximity calculations
+- 🔧 **Flexible attributes** stored as JSONB for schema extension
+- ⚡ **Single transaction** execution for atomicity and performance
 
-## 🏗️ Schema Definition
+## Table of Contents
 
-All tables in the pipeline follow a standardized schema to ensure consistency and compatibility with the unified POI table.
+- [Schema Definition](#schema-definition)
+- [Data Cleaning](#data-cleaning)
+- [Pipeline Architecture](#pipeline-architecture)
+- [Implementation Steps](#implementation-steps)
+- [Getting Started](#getting-started)
 
-### 📊 Common Column Schema
+## Schema Definition
+
+All source tables are standardized to a common schema before consolidation.
+
+### Source Table Schema
 
 ```sql
-id VARCHAR(20) PRIMARY KEY,                 -- Numeric only, no letters
-district_id VARCHAR(20) NOT NULL,            -- Mapped from district name
-name VARCHAR(200) NOT NULL,                 -- Defaults to 'Unknown' if NULL
-latitude DECIMAL(9,6),                      
-longitude DECIMAL(9,6), 
-geometry VARCHAR,                           -- POINT() format
-neighborhood VARCHAR(100),                  -- Joined from neighborhoods table
-district VARCHAR(100),                      -- From lor_ortsteile.geojson
-neighborhood_id VARCHAR(20),                -- From lor_ortsteile.geojson
-CONSTRAINT district_id_fk 
-  FOREIGN KEY (district_id)
-  REFERENCES berlin_data.districts(district_id) 
-  ON DELETE RESTRICT ON UPDATE CASCADE
+CREATE TABLE source_poi (
+    id VARCHAR(20) PRIMARY KEY,              -- Numeric only, no letters
+    district_id VARCHAR(20) NOT NULL,        -- Mapped from district name
+    name VARCHAR(200) NOT NULL,              -- Defaults to 'Unknown' if NULL
+    latitude DECIMAL(9,6),                      
+    longitude DECIMAL(9,6), 
+    geometry VARCHAR,                        -- POINT() format
+    neighborhood VARCHAR(100),               -- Joined from neighborhoods table
+    district VARCHAR(100),                   -- From lor_ortsteile.geojson
+    neighborhood_id VARCHAR(20),             -- From lor_ortsteile.geojson
+    
+    CONSTRAINT district_id_fk 
+        FOREIGN KEY (district_id)
+        REFERENCES berlin_data.districts(district_id) 
+        ON DELETE RESTRICT ON UPDATE CASCADE
+);
 ```
 
----
+### Unified POI Schema
 
-## 🧹 Data Cleaning
-
-Before consolidation, all source tables were standardized to meet the common schema requirements.
-
-### 📝 Renaming Tables
-
-Renamed to layer names for clarity:
 ```sql
-ALTER TABLE berlin_source_data.hospitals_refactored RENAME TO hospitals;
+CREATE TABLE unified_pois (
+    poi_id VARCHAR(50) PRIMARY KEY,          -- Format: [layer_prefix]-[original_id]
+    name VARCHAR(200),  
+    layer VARCHAR(100),                      -- Source table name
+    district_id VARCHAR(20),
+    district VARCHAR(100),
+    neighborhood_id VARCHAR(20),
+    neighborhood VARCHAR(100),
+    latitude DECIMAL(9,6),
+    longitude DECIMAL(9,6),
+    geometry GEOMETRY,                       -- PostGIS geometry type
+    attributes JSONB,                        -- Non-standard columns
+    nearest_pois JSONB                       -- Nearest POI per layer
+);
 ```
 
-### 🔤 Renaming Columns
+## Data Cleaning
 
-Standardized column naming conventions:
+The pipeline includes comprehensive data cleaning to ensure all source tables meet schema requirements.
+
+### Standardization Operations
+
+**Table Renaming**
 ```sql
-ALTER TABLE berlin_source_data.food_markets RENAME COLUMN market_id TO id;
+-- Rename to layer names for clarity
+ALTER TABLE berlin_source_data.hospitals_refactored 
+RENAME TO hospitals;
 ```
 
-### 🔢 Data Type Conversions
-
-Corrected inconsistent data types:
+**Column Renaming**
 ```sql
+-- Standardize column naming conventions
+ALTER TABLE berlin_source_data.food_markets 
+RENAME COLUMN market_id TO id;
+```
+
+**Data Type Corrections**
+```sql
+-- Fix inconsistent data types
 ALTER TABLE berlin_source_data.short_term_listings 
-  ALTER COLUMN id TYPE varchar(20) USING id::varchar(20);
+ALTER COLUMN id TYPE VARCHAR(20) USING id::VARCHAR(20);
 
 ALTER TABLE berlin_source_data.short_term_listings 
-  ALTER COLUMN "name" TYPE varchar(200) USING "name"::varchar(200);
+ALTER COLUMN name TYPE VARCHAR(200) USING name::VARCHAR(200);
 ```
 
-### ➕ Adding Missing Columns
-
-For tables without latitude/longitude data:
+**Missing Column Addition**
 ```sql
-ALTER TABLE berlin_source_data.bike_lanes ADD latitude varchar NULL;
-ALTER TABLE berlin_source_data.bike_lanes ADD longitude varchar NULL;
+-- Add missing latitude/longitude columns
+ALTER TABLE berlin_source_data.bike_lanes 
+ADD COLUMN latitude VARCHAR NULL;
+
+ALTER TABLE berlin_source_data.bike_lanes 
+ADD COLUMN longitude VARCHAR NULL;
 ```
 
-### 🔍 Data Enrichment & Corrections
+### Data Enrichment
 
-A dedicated Jupyter notebook (`table_corrections`) handles:
-- **🏘️ Missing neighborhood_id**: Joined neighborhood names to the neighborhoods lookup table
-- **📍 Missing geometry**: Generated POINT() format from latitude/longitude coordinates
-- **🌍 Missing neighborhood/district data**: Used Nominatim API for geocoding and joined to lookup tables
-- **🔧 Inconsistent district IDs**: Corrected outdated district numbering
-- **📋 Incomplete records**: Recreated short_term_listings table to include name column
+The `table_corrections` Jupyter notebook handles:
 
----
+- **Missing neighborhood_id**: Joins neighborhood names to lookup tables
+- **Missing geometry**: Generates POINT() format from lat/lon coordinates
+- **Missing location data**: Uses Nominatim API for geocoding
+- **Inconsistent district IDs**: Corrects outdated district numbering
+- **Incomplete records**: Recreates tables with missing required columns
 
-## 🔄 Pipeline Overview
+## Pipeline Architecture
 
-The unified POI table creation process is implemented in `create_unified_poi_table.py` and consists of five sequential steps.
+**Technology Stack**
+- Language: Python 3.x
+- ORM: SQLAlchemy
+- Database: PostgreSQL with PostGIS extension
+- Pattern: Single transaction for atomicity
 
-### 🛠️ Architecture
-
-- **Language**: Python with SQLAlchemy
-- **Database**: PostgreSQL with PostGIS
-- **Pattern**: Single transaction (`engine.begin()`) for atomicity and performance
-
----
-
-## ⚙️ Implementation Details
-
-### ✅ Step 1: Validation
-
-Creates an `excluded_tables_log` table to identify invalid tables before processing.
-
-**Validation Checks**:
-- ✔️ All required columns present
-- ✔️ Correct data types applied
-- ✔️ Non-nullable columns contain no NULL values
-- ✔️ Primary key constraint on `id` column
-- ✔️ Foreign key constraint on `district_id` column
-
-**Process**:
-- `all_tables` CTE: Selects all tables except districts and neighborhoods
-- `expected_schema` CTE: Defines the standard schema structure
-- `missing_columns` CTE: Identifies missing required columns
-- `datatype_issues` CTE: Detects incorrect data types
-- `null_issues` CTE: Flags NULL values in non-nullable columns
-- `pk_issues` CTE: Checks for missing PRIMARY KEY constraints
-- `fk_issues` CTE: Checks for missing FOREIGN KEY constraints
-
-Tables failing validation are logged and excluded from processing.
-
-### 📦 Step 2: Table Creation
-
-Creates two tables for the pipeline:
-
-**unified_pois**
-```sql
-poi_id VARCHAR(50) PRIMARY KEY,             -- [layer_prefix]-[original_id]
-name VARCHAR(200),  
-layer VARCHAR(100),                         -- Source table name
-district_id VARCHAR(20),
-district VARCHAR(100),
-neighborhood_id VARCHAR(20),
-neighborhood VARCHAR(100),
-latitude DECIMAL(9,6),
-longitude DECIMAL(9,6),
-geometry GEOMETRY, 
-attributes JSONB,                           -- Non-standard columns
-nearest_pois JSONB                          -- Nearest POI per layer
+**File Structure**
+```
+├── create_unified_poi_table.py    # Main pipeline script
+├── table_corrections.ipynb        # Data cleaning notebook
+└── README.md                      # This file
 ```
 
-**processed_tables_log**
-- 📝 Tracks which tables have been successfully added to unified_pois
+## Implementation Steps
 
-### 🎯 Step 3: Table Selection
+### Step 1: Validation
+
+Creates an `excluded_tables_log` to identify invalid tables before processing.
+
+**Validation Checks:**
+- Required columns present
+- Correct data types
+- No NULL values in non-nullable columns
+- PRIMARY KEY constraint on `id`
+- FOREIGN KEY constraint on `district_id`
+
+**Process Flow:**
+1. Query all tables in `berlin_source_data` schema
+2. Compare against expected schema definition
+3. Check for missing columns, type mismatches, NULL issues
+4. Verify constraint existence
+5. Log invalid tables for exclusion
+
+### Step 2: Table Creation
+
+Creates two pipeline tables:
+
+**`unified_pois`** - Main consolidated POI table
+
+**`processed_tables_log`** - Tracks successfully processed source tables
+
+### Step 3: Table Selection
 
 Queries `berlin_source_data` schema to identify valid tables:
-- 🚫 Excludes districts and neighborhoods reference tables
-- 🚫 Excludes tables in `excluded_tables_log`
+- Excludes `districts` and `neighborhoods` reference tables
+- Excludes tables logged in `excluded_tables_log`
 
-### 🔗 Step 4: Data Consolidation & Enrichment
+### Step 4: Data Consolidation & Enrichment
 
-For each valid table:
+For each valid source table:
 
-1. **📊 Data Transformation**
-   - Generates unique `poi_id` by concatenating layer prefix and original ID
-   - Ensures geometry is in correct SRID (4326)
-   - Serializes non-standard columns into JSONB `attributes`
+**Data Transformation**
+- Generate unique `poi_id` (format: `[layer]-[id]`)
+- Convert geometry to SRID 4326
+- Serialize non-standard columns to JSONB `attributes`
 
-2. **🔀 Union All**
-   - Combines all transformed tables into single dataset
+**Union Operation**
+- Combine all transformed tables into single dataset
 
-3. **🎯 Nearest Neighbor Analysis** (long_term_listings only)
-   - For each listing, calculates the nearest POI across all other layers
-   - Creates JSONB object with:
-     - 🏷️ POI ID, name, and distance
-     - 🏠 Street and house number from attributes
-   - Populates `nearest_pois` column
+**Nearest Neighbor Analysis** *(long_term_listings only)*
+- Calculate nearest POI across all other layers
+- Store as JSONB with POI ID, name, distance, and address
+- Populate `nearest_pois` column
 
-4. **💾 Data Insertion**
-   - Inserts consolidated POIs into `unified_pois`
-   - Logs processed tables in `processed_tables_log`
+**Data Insertion**
+- Insert consolidated POIs into `unified_pois`
+- Log processed tables in `processed_tables_log`
 
-### 🚀 Step 5: Spatial Indexing
+### Step 5: Spatial Indexing
 
-Creates a GIST spatial index on the `geometry` column for optimized spatial queries:
+Creates a GiST spatial index for optimized geospatial queries:
 
 ```sql
-CREATE INDEX idx_poi_geom ON unified_pois USING GIST (geometry);
+CREATE INDEX idx_poi_geom 
+ON unified_pois 
+USING GIST (geometry);
 ```
 
----
+## Getting Started
 
-## ⚡ Performance Notes
+### Prerequisites
 
-- ⚡ Single transaction ensures atomicity and minimizes connection overhead
-- 🏃 Spatial index enables fast distance-based queries
-- 🔧 JSONB attributes provide flexible schema extension
-- 📐 Nearest neighbor calculations use PostGIS distance operators for efficiency
+- PostgreSQL with PostGIS extension
+- Python 3.x
+- SQLAlchemy
+- Required Python packages (see `requirements.txt`)
 
----
+### Installation
 
-## 🚀 Usage
+```bash
+# Clone the repository
+git clone <repository-url>
+cd unified-poi-table
 
-```python
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Usage
+
+Run the pipeline:
+
+```bash
 python create_unified_poi_table.py
 ```
 
-The script will:
-1. ✅ Validate all source tables
-2. ✅ Create fresh unified_pois and logging tables
-3. ✅ Process all valid tables
-4. ✅ Generate spatial index
-5. ✅ Print progress at each step
+**Pipeline Execution:**
+1. ✅ Validates all source tables
+2. ✅ Creates fresh `unified_pois` and logging tables
+3. ✅ Processes all valid tables
+4. ✅ Generates spatial index
+5. ✅ Prints progress at each step
+
+### Example Query
+
+```sql
+-- Find all POIs within 500m of a location
+SELECT poi_id, name, layer, 
+       ST_Distance(geometry, ST_SetSRID(ST_MakePoint(13.404954, 52.520008), 4326)::geography) as distance_m
+FROM unified_pois
+WHERE ST_DWithin(
+    geometry::geography, 
+    ST_SetSRID(ST_MakePoint(13.404954, 52.520008), 4326)::geography,
+    500
+)
+ORDER BY distance_m;
+```
+
+## Performance Optimizations
+
+- ⚡ Single transaction minimizes connection overhead
+- 🏃 GiST spatial index enables fast distance-based queries
+- 🔧 JSONB attributes provide flexible schema extension
+- 📐 PostGIS operators optimize nearest neighbor calculations
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
+
+## License
+
+[Add your license here]
+
+## Contact
+
+[Add contact information or links]
