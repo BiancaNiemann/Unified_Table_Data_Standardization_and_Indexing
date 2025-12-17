@@ -197,42 +197,7 @@ ON unified_pois
 USING GIST (geometry);
 ```
 
-## Getting Started
-
-### Prerequisites
-
-- PostgreSQL with PostGIS extension
-- Python 3.x
-- SQLAlchemy
-- Required Python packages (see `requirements.txt`)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd unified-poi-table
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Usage
-
-Run the pipeline:
-
-```bash
-python create_unified_poi_table.py
-```
-
-**Pipeline Execution:**
-1. ✅ Validates all source tables
-2. ✅ Creates fresh `unified_pois` and logging tables
-3. ✅ Processes all valid tables
-4. ✅ Generates spatial index
-5. ✅ Prints progress at each step
-
-### Example Query
+## Example Query
 
 ```sql
 -- Find all POIs within 500m of a location
@@ -254,19 +219,3 @@ ORDER BY distance_m;
 - 🔧 JSONB attributes provide flexible schema extension
 - 📐 PostGIS operators optimize nearest neighbor calculations
 
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
-
-## License
-
-[Add your license here]
-
-## Contact
-
-[Add contact information or links]
