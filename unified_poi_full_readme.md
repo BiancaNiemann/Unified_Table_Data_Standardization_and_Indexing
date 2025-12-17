@@ -43,7 +43,7 @@ CREATE TABLE source_poi (
     
     CONSTRAINT district_id_fk 
         FOREIGN KEY (district_id)
-        REFERENCES berlin_data.districts(district_id) 
+        REFERENCES berlin_source_data.districts(district_id) 
         ON DELETE RESTRICT ON UPDATE CASCADE
 );
 ```
