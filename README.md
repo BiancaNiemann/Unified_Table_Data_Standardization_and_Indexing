@@ -58,10 +58,9 @@ flowchart TD
     B --> C[Validation Checks]
     C --> D[Unified Table]
     D --> E[Spatial Indexing / Nearest Neighbor]
-    E --> F[Analysis & Querying]
 ```
 
-##🚀 Highlights
+## 🚀 Highlights
 
 - Unified and standardized datasets for consistent analysis
 - Efficient spatial queries enabled via GIST indexes
