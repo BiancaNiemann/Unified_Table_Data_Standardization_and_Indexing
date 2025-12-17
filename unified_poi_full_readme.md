@@ -1,4 +1,7 @@
 # 🗺️ Unified POI Table
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![Jupyter](https://img.shields.io/badge/Jupyter-F37626?style=for-the-badge&logo=jupyter&logoColor=white)
 
 > A comprehensive data pipeline for consolidating Berlin's Point of Interest (POI) data into a single unified table with spatial indexing and nearest-neighbor analysis.
 
